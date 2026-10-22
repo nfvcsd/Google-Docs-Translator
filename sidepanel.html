@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Docs Spanish Translator</title>
+  <link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+  <main class="app">
+    <header>
+      <div class="eyebrow">GOOGLE DOCS</div>
+      <h1>English → Spanish</h1>
+      <p class="subtitle">Local translation in Chrome, with an optional formatted Google Docs copy.</p>
+    </header>
+
+    <section class="card doc-card">
+      <div class="row between">
+        <div>
+          <div class="label">Current document</div>
+          <div id="docTitle" class="doc-title">Loading…</div>
+        </div>
+        <button id="reloadButton" class="secondary small" type="button">Reload</button>
+      </div>
+      <div id="docMeta" class="meta"></div>
+    </section>
+
+    <section class="card">
+      <div class="row between status-row">
+        <div>
+          <div class="label">Status</div>
+          <div id="statusText" class="status">Reading document…</div>
+        </div>
+        <span id="statusPill" class="pill">Ready</span>
+      </div>
+      <div id="progressWrap" class="progress-wrap hidden" aria-hidden="true">
+        <div class="progress-track">
+          <div id="progressBar" class="progress-bar"></div>
+        </div>
+        <div id="progressText" class="progress-text"></div>
+      </div>
+    </section>
+
+    <button id="translateButton" class="primary" type="button" disabled>Translate preview to Spanish</button>
+
+    <section class="card output-card">
+      <div class="row between output-header">
+        <div>
+          <div class="label">Spanish translation</div>
+          <div class="meta">Plain-text preview</div>
+        </div>
+        <div class="button-group">
+          <button id="copyButton" class="secondary small" type="button" disabled>Copy</button>
+          <button id="saveButton" class="secondary small" type="button" disabled>Save .txt</button>
+        </div>
+      </div>
+      <textarea id="translationOutput" spellcheck="false" placeholder="Your translated preview will appear here." readonly></textarea>
+    </section>
+
+    <section class="card drive-card">
+      <div class="row between drive-header">
+        <div>
+          <div class="label">Formatted Google Doc</div>
+          <div class="doc-title small-title">Create a Spanish copy</div>
+        </div>
+        <span id="oauthPill" class="pill warning">Setup</span>
+      </div>
+      <p class="card-copy">
+        Creates a native Google Docs copy in the same Drive folder, then translates text inside it while preserving document structure and formatting. Office/Word sources are converted to native Google Docs automatically first.
+      </p>
+      <div class="warning-config">
+        <div class="row between warning-config-header">
+          <div>
+            <div class="label">Translation warning</div>
+            <div class="meta">Translated with the same on-device translator, then added to the Spanish copy's header.</div>
+          </div>
+          <button id="resetWarningButton" class="secondary small" type="button">Reset default</button>
+        </div>
+        <textarea id="warningTextInput" class="warning-input" spellcheck="true" aria-label="Translation warning message"></textarea>
+        <div id="warningSavedText" class="meta"></div>
+        <div class="meta">Enter the notice in English. Chrome translates it to Spanish with the same local translation engine used for the document.</div>
+      </div>
+      <div id="oauthSetup" class="setup-box hidden">
+        <div class="label">Google OAuth setup required</div>
+        <p>Enable the Google Drive and Google Docs APIs, create a <strong>Chrome Extension</strong> OAuth client, and use this extension ID:</p>
+        <div class="code-row">
+          <code id="extensionId"></code>
+          <button id="copyExtensionIdButton" class="secondary small" type="button">Copy ID</button>
+        </div>
+        <p>Then replace the placeholder <code>oauth2.client_id</code> in <code>manifest.json</code> with your OAuth client ID and reload the extension.</p>
+      </div>
+      <button id="createDocButton" class="primary create-doc" type="button" disabled>Create Spanish Google Doc</button>
+      <button id="openDocButton" class="secondary open-doc hidden" type="button">Open created Spanish Doc</button>
+      <div id="createdDocMeta" class="meta"></div>
+    </section>
+
+    <section class="note">
+      <strong>Privacy:</strong> translation runs locally in Chrome. Google authorization is used only when you choose to create the formatted copy in your own Google Drive.
+    </section>
+
+    <section class="note subtle">
+      The formatted-copy workflow preserves the copied document's tables, images, lists, headings, headers, footers, footnotes, and layout. Text with mixed inline formatting is translated in smaller runs so bold/italic/link styling can be retained; that can occasionally make a sentence translate less naturally than the plain-text preview.
+    </section>
+  </main>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>
