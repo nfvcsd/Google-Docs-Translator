@@ -1,200 +1,131 @@
-# Google Docs English → Spanish — v1.1.4
+# Google Docs Translator
 
-For signed GitHub Releases, GitHub Pages updates, and managed deployment, see [Release setup](docs/RELEASE.md). Releases use a new identity recorded in `release-identity.json`; the unpacked installation described below retains its original identity. The signed build uses the registered district OAuth client recorded in `release-identity.json`.
+Translate Google Docs from English to Spanish using Chrome’s built-in, on-device Translator API. Preview the translated text in a side panel, or create a separate Spanish Google Doc that retains the source document’s structure and formatting where supported.
 
-Download signed packages from [GitHub Releases](https://github.com/nfvcsd/Google-Docs-Translator/releases). The managed-update feed is `https://nfvcsd.github.io/Google-Docs-Translator/updates.xml`. Signed releases use extension ID `hhanmjkigacbhkgidgakdlpkihlgajpd`.
+The original document is left unchanged.
 
-A Chrome Manifest V3 extension that translates an open Google Doc from English to Spanish using Chrome's built-in on-device Translator API.
+[Download releases](https://github.com/nfvcsd/Google-Docs-Translator/releases) · [Changelog](CHANGELOG.md) · [Deployment guide](docs/RELEASE.md) · [Report an issue](https://github.com/nfvcsd/Google-Docs-Translator/issues)
 
-Version 1.1.3 fixes translation of the configurable warning. The warning is translated explicitly with the same on-device Translator instance used for the document and is inserted only after the document translation finishes. This avoids a Google Docs API edge case where a newly created header could be omitted from the text traversal. Native Google Docs are copied normally; Office files such as `.docx` are imported into native Google Docs format first, then translated.
+## Features
 
-## Changes in v1.1.4
-
-- Prepare the local translator directly from the click before OAuth or Drive copying. A failed model download no longer creates an unnecessary Drive copy.
-- Keep the formatted-copy option available when preview export fails for a recognized document URL.
-- Add the translated warning to every document tab, including nested and pageless tabs.
-- Require the expected Google Docs revision for every text and warning update. Stop on concurrent edits rather than applying stale text ranges.
-
-Run regression tests with `node --test tests/*.test.cjs` and release tests with `python3 -m unittest discover -s tests -v`. Live OAuth and managed-device tests are still required before deployment.
-
-## What v1.1 does
-
-- Keeps the original English Google Doc untouched.
-- Creates a new native Google Doc named `Original document name - Spanish`.
-- Automatically converts supported Office/Word sources (including `.docx`) to native Google Docs before translation.
-- By default, Google Drive places the copy in the same discoverable parent folder as the source document.
-- Translates locally with Chrome's built-in English → Spanish Translator API.
-- Preserves the copied document's tables, images, lists, headings, page layout, and other non-text structure.
-- Adds a configurable English translation warning to the copy's header and translates that notice to Spanish with the rest of the document.
-- Stores the user's custom warning locally in the extension; **Reset default** restores the built-in notice.
-- Translates text found in the body, table cells, headers, footers, footnotes, and Google Docs tabs.
-- Reapplies inline styles such as bold, italic, underline, font properties, colors, and links to translated text runs.
-- Retains the original plain-text side-panel preview, Copy, and Save `.txt` features from v1.0.2.
+- **Local translation:** English-to-Spanish translation runs on your device through Chrome.
+- **Text preview:** Read the translation in a side panel, copy it, or save it as a `.txt` file.
+- **Formatted copies:** Create a Spanish Google Doc while retaining tables, images, lists, headings, and supported text styles.
+- **Word document support:** Convert supported Office files opened in Google Docs into native Google Docs before translating them.
+- **Translation notices:** Customize an English notice that is translated and added to every document tab, including nested tabs. Pageless tabs receive the notice at the top of the body.
+- **Concurrent-edit protection:** Stop updates if the copied document changes during translation, rather than applying outdated text ranges.
 
 ## Requirements
 
-- Desktop Google Chrome 138 or newer.
-- A Google account that can copy/edit the source document.
-- For the formatted Google Doc feature: a Google Cloud project with the Google Drive API and Google Docs API enabled.
+- Desktop Google Chrome 138 or newer with the Translator API available.
+- Access to the source document in Google Docs.
+- For formatted copies, an authorized Google account with permission to copy the source and edit the resulting document.
 
-The plain-text preview does **not** require Google Cloud/OAuth setup.
+Chrome may need to download the English–Spanish language model on first use. Internet access is required to read Google Docs and create or update files in Google Drive.
 
-## Install the extension
+**The bundled OAuth configuration is for North Fayette Valley Community School District users.** Users outside the district can use the local preview when document export is available, but need their own Google Cloud OAuth configuration to create formatted copies. See [Using this project in another organization](#using-this-project-in-another-organization).
 
-1. Unzip this package.
-2. Open `chrome://extensions`.
-3. Turn on **Developer mode**.
-4. Click **Load unpacked**.
-5. Select the unzipped `google-docs-spanish-translator-v1.1.4` folder.
-6. Open a Google Doc and click the extension icon.
+## Installation
 
-This build pins a public extension key so its Chrome extension ID remains stable:
+### Managed deployment
 
-`nmeknfnkopnkomanaldgmflbmileinko`
+Signed `.crx` packages are available on the [releases page](https://github.com/nfvcsd/Google-Docs-Translator/releases). These packages are intended for supported, managed Chrome installations through an administrator’s deployment policy. Downloading a CRX is not a general-purpose installation method on Windows or macOS.
 
-Only the public key is included in `manifest.json`; no private signing key or OAuth client secret is included.
+| Setting | Value |
+| --- | --- |
+| Signed extension ID | `hhanmjkigacbhkgidgakdlpkihlgajpd` |
+| Update feed | `https://nfvcsd.github.io/Google-Docs-Translator/updates.xml` |
 
-## One-time Google OAuth setup for formatted copies
+See the [deployment guide](docs/RELEASE.md) for signing, GitHub Actions, GitHub Pages, and Chrome policy configuration. Validate installation and automatic updates with a small pilot group before wider deployment.
 
-The extension cannot create files in a user's Google Drive without explicit Google OAuth authorization. The OAuth client ID must be created in your own Google Cloud project.
+### Local development and evaluation
 
-### 1. Create or select a Google Cloud project
+1. Clone this repository or download and extract its source ZIP.
+2. Open `chrome://extensions` in Chrome.
+3. Enable **Developer mode** and select **Load unpacked**.
+4. Select the repository folder containing `manifest.json`.
+5. Open a Google Doc and click the extension’s toolbar icon. You may need to pin it from Chrome’s Extensions menu.
 
-Go to Google Cloud Console and create/select a project for this extension.
+The source manifest retains a separate development identity from the signed release. Loading the repository directly does not install the signed release identity or enable its automatic updates. See [OAuth setup](#using-this-project-in-another-organization) before testing formatted copies with your own account.
 
-For a Google Workspace school district, using an **Internal** OAuth app is generally the simplest deployment model when only users in your Workspace organization will use it.
+## Usage
 
-### 2. Enable APIs
+### Preview a translation
 
-Enable both:
+1. Open an English document in Google Docs and open the extension’s side panel.
+2. Select **Reload** if you have switched documents.
+3. Select **Translate preview to Spanish**.
+4. Use **Copy** or **Save .txt** to export the result.
 
-- Google Drive API
-- Google Docs API
+The preview does not require the extension’s Google OAuth authorization. It uses your existing access to the open document. If text export fails, the authenticated formatted-copy option may still be available.
 
-### 3. Configure the OAuth consent screen
+### Create a formatted Spanish copy
 
-Configure the project's Google Auth Platform / OAuth consent screen.
+1. Open the source document and the extension’s side panel.
+2. Review or customize the **Translation warning**.
+3. Select **Create Spanish Google Doc** and complete Google authorization when prompted.
+4. Keep the side panel open while translation runs, and avoid editing the new copy until it finishes.
+5. Select **Open created Spanish Doc** to review the result.
 
-The extension requests this scope:
+The copy is named `Original document name - Spanish`. Supported Word files are converted to native Google Docs as part of this process. Review the translation before sharing it, especially where wording or formatting is important.
 
-`https://www.googleapis.com/auth/drive`
+## Privacy and permissions
 
-This permission is used because v1.1 copies the existing source file and edits the resulting copy. The Google Docs API accepts the Drive scope for reading and updating Docs content.
+Translation is performed locally using Chrome’s Translator API. The extension does not send document text to a third-party translation service.
 
-If your Google Workspace organization uses API controls/app access controls, your Workspace administrator may also need to trust/allow the OAuth app.
+Creating a formatted copy communicates with Google Drive and Google Docs APIs using the Google account you authorize. This workflow requests the `https://www.googleapis.com/auth/drive` scope, which grants broad access to view, edit, create, and delete Drive files. The implemented workflow reads the source, creates a copy, and edits that copy; it does not modify the original or automatically delete files.
 
-### 4. Create an OAuth client
+Your custom translation notice is stored locally in the browser profile. OAuth client IDs and public extension keys included in the repository are public configuration, not secrets. Private signing keys must remain outside the repository.
 
-Create an OAuth 2.0 Client ID with application type **Chrome Extension**.
+## Limitations
 
-Use this extension ID exactly:
+- Only English-to-Spanish translation is currently supported.
+- Machine translations can contain errors and should be reviewed by a person.
+- Mixed-format sentences are translated in smaller text runs to retain styling, which can reduce translation quality.
+- Text embedded in images, comments, and suggestion discussions is not translated. Some smart chips and generated content may remain unchanged.
+- Formatting preservation depends on the source document and Google’s conversion behavior; translated text may change pagination and layout.
+- Office conversion is limited to formats supported by Google Drive.
+- Large documents can take time. Closing the side panel interrupts the workflow; automatic resume is not supported.
+- If an operation fails after a copy has been created, that file remains in Drive and may be partially translated. Review or delete it manually before trying again.
 
-`nmeknfnkopnkomanaldgmflbmileinko`
+## Using this project in another organization
 
-Google will give you a client ID that looks similar to:
+Formatted copies require an OAuth client registered to the extension ID you deploy. The district’s bundled client is not available to accounts outside its organization.
 
-`123456789012-abcdefghijklmnopqrstuvwxyz.apps.googleusercontent.com`
+1. Create or select your own Google Cloud project and enable the **Google Drive API** and **Google Docs API**.
+2. Configure the OAuth consent screen, audience, and Drive scope for your intended users.
+3. Create an OAuth client with application type **Chrome Extension**, using your extension’s ID as the Item ID.
+4. For unpacked development, replace `oauth2.client_id` in `manifest.json` with your client ID and reload the extension. Confirm the registered ID matches the ID displayed in `chrome://extensions`.
+5. For signed distribution, use your own signing key and update `release-identity.json` with its derived extension ID, public key, and matching OAuth client ID. Follow the [deployment guide](docs/RELEASE.md) to configure your repository and update feed.
 
-You do not put a client secret in this extension.
-
-### 5. Put the client ID into manifest.json
-
-Open `manifest.json` and find:
-
-```json
-"oauth2": {
-  "client_id": "REPLACE_WITH_YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com",
-  "scopes": [
-    "https://www.googleapis.com/auth/drive"
-  ]
-}
-```
-
-Replace only the placeholder client ID with the OAuth client ID from Google Cloud.
-
-Save `manifest.json`.
-
-### 6. Reload the extension
-
-1. Return to `chrome://extensions`.
-2. Find **Google Docs English → Spanish**.
-3. Click **Reload**.
-4. Reload the Google Docs browser tab as well.
-
-The side panel should now show the formatted Google Doc feature as **Ready** instead of **Setup**.
-
-## Create a Spanish Google Doc
-
-1. Open the English Google Doc.
-2. Open the extension side panel.
-3. Review or customize the **Translation warning** text. The default is:
-
-   > Translation Notice: This document was automatically translated from English to Spanish and may contain errors. Please verify important information against the original English document.
-
-4. Click **Create Spanish Google Doc**.
-5. On the first use, approve the Google authorization prompt.
-6. The extension will:
-   - detect whether the source is a native Google Doc or an Office file;
-   - copy native Docs directly, or import supported Office sources as a native Google Doc;
-   - read the copy's Docs structure and translate its English text locally in Chrome;
-   - translate the configured English warning with the same local Translator instance;
-   - replace text from the end of each Docs segment toward the beginning so changing sentence lengths do not corrupt later indexes;
-   - preserve/reapply inline text styles;
-   - add the already-translated warning to each tab's headers (or the top of its body for a pageless tab);
-   - provide an **Open created Spanish Doc** button when complete.
-
-## Why this preserves formatting better
-
-Rather than exporting the source as plain text and rebuilding it manually, v1.1.3 uses Google Drive conversion/copying. Native Google Docs are copied directly. Supported Office files are downloaded and immediately re-imported as native Google Docs, allowing Google to preserve the Office document structure during conversion. The extension then edits only translatable text ranges in the resulting native Doc.
-
-For paragraphs where all text has the same inline style, the extension translates the paragraph as a larger unit for better context. If a paragraph contains mixed formatting—such as a bold word inside a normal sentence—the extension translates the individual formatted runs so their styles can be retained. That tradeoff can occasionally produce a slightly less natural translation in heavily formatted sentences.
-
-## Privacy
-
-The actual English → Spanish translation is performed by Chrome's on-device Translator API. Document text is not sent to a third-party translation provider by this extension.
-
-When you use **Create Spanish Google Doc**, the extension necessarily communicates with Google Drive and Google Docs APIs to copy and edit files in the Google account you authorize.
-
-## Known limitations
-
-- The configurable warning is stored locally in the extension/browser profile. It is not added to the original English document.
-- Pageless Google Docs do not display page headers; for those documents, the warning is inserted at the top of the translated copy instead.
-- Mixed-format sentences may translate slightly differently from the plain-text preview because inline runs are translated separately to preserve formatting.
-- Comments and suggestion discussions are not translated. The copy workflow does not intentionally copy open comments.
-- Text embedded inside an image is not translated.
-- Drawings/images themselves are preserved because the source document is copied, but any English words baked into those images remain English.
-- Some advanced smart-chip or generated/autotext content may remain unchanged.
-- If translation fails after the native Google Doc has already been created, the extension leaves it in Drive and tells you that it may be partially translated; it does not automatically delete user files.
-- Office conversion depends on the source MIME type appearing in Google Drive's current `importFormats` list. Unsupported formats produce a clear error instead of attempting a Docs API edit.
-- Very large documents require many local translation calls and Google Docs update batches.
+The release builder injects the release identity and OAuth client into the packaged manifest without changing the development manifest. Changing only the development manifest does not change the release OAuth client. No OAuth client secret is needed for this Chrome extension.
 
 ## Troubleshooting
 
-### "Google OAuth client configuration is invalid"
+| Problem | What to check |
+| --- | --- |
+| Translator API is unavailable | Use a supported desktop Chrome version and confirm that local translation is available in your browser environment. |
+| Preview cannot read the document | Confirm access in the active Google account, select **Reload**, or try the formatted-copy option. |
+| OAuth client configuration is invalid | Confirm the client type is **Chrome Extension** and that its registered ID matches the installed extension. |
+| Google blocks authorization | Check whether your account belongs to the configured audience. Workspace administrators may need to approve the client in Google Admin API controls. |
+| Drive or Docs API is disabled | Enable both APIs in the Cloud project that owns the OAuth client. |
+| Translation stops because the document changed | Leave the incomplete copy for review and start a new translation from the source. Avoid editing the copy during processing. |
 
-Verify that:
+When [reporting an issue](https://github.com/nfvcsd/Google-Docs-Translator/issues), include the extension version, Chrome version, operating system, document type, and steps to reproduce. Use a sanitized example rather than sharing confidential documents or access tokens.
 
-- the OAuth client type is **Chrome Extension**;
-- its extension ID is `nmeknfnkopnkomanaldgmflbmileinko`;
-- the client ID was copied into `manifest.json` exactly;
-- the extension was reloaded after editing the manifest.
+## Development
 
-### Google says the app is blocked
+The extension uses Manifest V3 and plain JavaScript, HTML, and CSS. No bundler is required to load the source.
 
-For a Google Workspace district, check Google Admin Console API controls / app access controls. An administrator may need to mark the internally created OAuth app as trusted or allowed.
+Run the automated checks with Node.js 22 and Python 3:
 
-### API has not been used / is disabled
+```sh
+node --check sidepanel.js
+node --check service-worker.js
+node --test tests/*.test.cjs
+python3 -m unittest discover -s tests -v
+```
 
-Enable both Google Drive API and Google Docs API in the same Google Cloud project that owns the OAuth client.
+GitHub Actions runs these checks on pushes and pull requests. The manual release workflow also validates the signing identity, publishes the signed package and checksum, verifies an anonymous download, and then deploys the update feed.
 
-### The original document is unchanged
-
-That is intentional. The formatted workflow always works on a newly created copy.
-
-## Files
-
-- `manifest.json` — Manifest V3 configuration, permissions, fixed public extension key, OAuth placeholder.
-- `service-worker.js` — Opens the side panel when the extension icon is clicked.
-- `sidepanel.html` — Side-panel UI.
-- `sidepanel.css` — UI styling.
-- `sidepanel.js` — Google Docs export, local translation, OAuth, Drive copy, Docs structure parsing, and formatted text replacement.
+Automated checks cover translation control flow, document update requests, and release packaging. Live Google authorization, document rendering, managed installation, and automatic upgrades also require browser and device testing.
