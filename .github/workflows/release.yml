@@ -1,0 +1,63 @@
+name: Signed pilot release
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: pilot-release
+  cancel-in-progress: false
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    environment:
+      name: pilot-release
+      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node --check sidepanel.js && node --check service-worker.js
+      - run: node --test tests/*.test.cjs
+      - run: python3 -m unittest discover -s tests -v
+      - name: Build with the reviewed signing identity
+        env:
+          CRX_PRIVATE_KEY_B64: ${{ secrets.CRX_PRIVATE_KEY_B64 }}
+          OAUTH_CLIENT_ID: ${{ vars.OAUTH_CLIENT_ID }}
+          REPOSITORY: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "$CRX_PRIVATE_KEY_B64"
+          umask 077
+          key_file="$RUNNER_TEMP/translator-signing.pem"
+          trap 'rm -f "$key_file"' EXIT
+          printf '%s' "$CRX_PRIVATE_KEY_B64" | base64 --decode > "$key_file"
+          expected_id="$(python3 -c 'import json; print(json.load(open("release-identity.json"))["extension_id"])')"
+          python3 scripts/build.py --chrome "$(command -v google-chrome)" --key "$key_file" --repository "$REPOSITORY" --expected-id "$expected_id" --oauth-client-id "$OAUTH_CLIENT_ID"
+      - name: Publish immutable release before updating the feed
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json; print(json.load(open("manifest.json"))["version"])')"
+          gh release create "v$version" .dist/google-docs-translator.crx .dist/SHA256SUMS .dist/extension-id.txt --target "$GITHUB_SHA" --title "Google Docs Translator $version" --generate-notes
+      - name: Verify anonymous download
+        env:
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          version="$(python3 -c 'import json; print(json.load(open("manifest.json"))["version"])')"
+          curl --fail --location --proto '=https' --proto-redir '=https' --retry 5 --retry-all-errors "https://github.com/$REPOSITORY/releases/download/v$version/google-docs-translator.crx" -o "$RUNNER_TEMP/download.crx"
+          cmp .dist/google-docs-translator.crx "$RUNNER_TEMP/download.crx"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .dist/pages
+      - uses: actions/deploy-pages@v4
+        id: deployment

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Google Docs English → Spanish",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "description": "Translate an open Google Doc from English to Spanish locally in Chrome, create a formatted Spanish copy, and add a configurable translated warning to the copy.",
   "minimum_chrome_version": "138",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAi3WfHMat6waNXn8hNjMvijxaDooy8EK8/7BmDlXReHAmTzY4UKkUAdpYwYLQtWo/oUMMR1tQ7iIwYnfFtqjmDjuV3dzF8/L9eTpPGtUh2ZUCcOjq2mU2M/3Q+42CtQIbfLz51H/0No1+cIdn2ixCOyFjx/Q82C8+fGMbPQAZPyIruMloKVRd3mETOTdLKnPU0rO6EYYS1ecqTlm0M9OrQLvxNH4+xQtSYMVxaMOsYdjEAYHoIaJQS+/LUw5lg8e6XwcPnbWw3UPbCvAefSnOw6v0TSxaSCNR4CiT8A8gGdOUDBs2XGUuHPS/g6tQb8U9MLrJUs/PuSo37VjsnLXuBQIDAQAB",

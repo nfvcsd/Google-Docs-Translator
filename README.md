@@ -1,8 +1,21 @@
-# Google Docs English → Spanish — v1.1.3
+# Google Docs English → Spanish — v1.1.4
+
+For signed GitHub Releases, GitHub Pages updates, and managed deployment, see [Release setup](docs/RELEASE.md). Releases use a new identity recorded in `release-identity.json`; the unpacked installation described below retains its original identity. The signed build uses the registered district OAuth client recorded in `release-identity.json`.
+
+Download signed packages from [GitHub Releases](https://github.com/nfvcsd/Google-Docs-Translator/releases). The managed-update feed is `https://nfvcsd.github.io/Google-Docs-Translator/updates.xml`. Signed releases use extension ID `hhanmjkigacbhkgidgakdlpkihlgajpd`.
 
 A Chrome Manifest V3 extension that translates an open Google Doc from English to Spanish using Chrome's built-in on-device Translator API.
 
 Version 1.1.3 fixes translation of the configurable warning. The warning is translated explicitly with the same on-device Translator instance used for the document and is inserted only after the document translation finishes. This avoids a Google Docs API edge case where a newly created header could be omitted from the text traversal. Native Google Docs are copied normally; Office files such as `.docx` are imported into native Google Docs format first, then translated.
+
+## Changes in v1.1.4
+
+- Prepare the local translator directly from the click before OAuth or Drive copying. A failed model download no longer creates an unnecessary Drive copy.
+- Keep the formatted-copy option available when preview export fails for a recognized document URL.
+- Add the translated warning to every document tab, including nested and pageless tabs.
+- Require the expected Google Docs revision for every text and warning update. Stop on concurrent edits rather than applying stale text ranges.
+
+Run regression tests with `node --test tests/*.test.cjs` and release tests with `python3 -m unittest discover -s tests -v`. Live OAuth and managed-device tests are still required before deployment.
 
 ## What v1.1 does
 
@@ -32,7 +45,7 @@ The plain-text preview does **not** require Google Cloud/OAuth setup.
 2. Open `chrome://extensions`.
 3. Turn on **Developer mode**.
 4. Click **Load unpacked**.
-5. Select the unzipped `google-docs-spanish-translator-v1.1.3` folder.
+5. Select the unzipped `google-docs-spanish-translator-v1.1.4` folder.
 6. Open a Google Doc and click the extension icon.
 
 This build pins a public extension key so its Chrome extension ID remains stable:
@@ -127,7 +140,7 @@ The side panel should now show the formatted Google Doc feature as **Ready** ins
    - translate the configured English warning with the same local Translator instance;
    - replace text from the end of each Docs segment toward the beginning so changing sentence lengths do not corrupt later indexes;
    - preserve/reapply inline text styles;
-   - add the already-translated warning to the copy's default header (or the top of the body for a pageless Doc, because pageless Docs do not display headers);
+   - add the already-translated warning to each tab's headers (or the top of its body for a pageless tab);
    - provide an **Open created Spanish Doc** button when complete.
 
 ## Why this preserves formatting better

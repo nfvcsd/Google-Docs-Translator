@@ -35,6 +35,7 @@ let sourceDocId = '';
 let translator = null;
 let translating = false;
 let creatingDoc = false;
+let loadingDocument = false;
 let createdDocUrl = '';
 
 function setStatus(message, tone = 'ready') {
@@ -186,8 +187,8 @@ async function exportFromExtension(tab) {
   };
 }
 
-async function extractOpenDoc() {
-  const tab = await getActiveDocsTab();
+async function extractOpenDoc(tab = null) {
+  tab = tab || await getActiveDocsTab();
   let pageResult = null;
 
   try {
@@ -246,7 +247,7 @@ function refreshOAuthUi() {
   oauthPill.textContent = configured ? 'Ready' : 'Setup';
   oauthPill.className = 'pill';
   if (!configured) oauthPill.classList.add('warning');
-  createDocButton.disabled = !configured || !sourceDocId || creatingDoc || translating;
+  createDocButton.disabled = !configured || !sourceDocId || creatingDoc || translating || loadingDocument;
 }
 
 function normalizeWarningText(value) {
@@ -284,7 +285,11 @@ function getConfiguredWarningText() {
 }
 
 async function loadDocument() {
-  if (translating || creatingDoc) return;
+  if (translating || creatingDoc || loadingDocument) return;
+  loadingDocument = true;
+  reloadButton.disabled = true;
+  sourceDocId = '';
+  sourceText = '';
   translateButton.disabled = true;
   createDocButton.disabled = true;
   copyButton.disabled = true;
@@ -299,7 +304,11 @@ async function loadDocument() {
   setProgress(10, 'Exporting document text…');
 
   try {
-    const doc = await extractOpenDoc();
+    const tab = await getActiveDocsTab();
+    sourceDocId = tab.docId;
+    sourceTitle = cleanDocTitle(tab.title);
+    docTitle.textContent = sourceTitle;
+    const doc = await extractOpenDoc(tab);
     sourceText = doc.text;
     sourceTitle = doc.title || 'Google Doc';
     sourceDocId = doc.docId || '';
@@ -321,10 +330,16 @@ async function loadDocument() {
   } catch (error) {
     console.error(error);
     sourceText = '';
-    sourceDocId = '';
-    docTitle.textContent = 'No document loaded';
-    setStatus(error?.message || 'Unable to read the Google Doc.', 'error');
+    docTitle.textContent = sourceDocId ? sourceTitle : 'No document loaded';
+    const message = error?.message || 'Unable to read the Google Doc.';
+    setStatus(sourceDocId
+      ? `Preview unavailable: ${message} You can still try creating a formatted copy.`
+      : message, 'error');
     hideProgress();
+    refreshOAuthUi();
+  } finally {
+    loadingDocument = false;
+    reloadButton.disabled = false;
     refreshOAuthUi();
   }
 }
@@ -368,15 +383,8 @@ async function getTranslator() {
     throw new Error('Chrome\'s Translator API is unavailable. Use desktop Chrome 138 or newer.');
   }
 
-  const availability = await Translator.availability({
-    sourceLanguage: 'en',
-    targetLanguage: 'es'
-  });
-
-  if (availability === 'unavailable') {
-    throw new Error('English → Spanish translation is unavailable in this Chrome installation.');
-  }
-
+  // Call create directly from the click handler, before OAuth or network waits.
+  // An availability probe here can consume the activation needed for a download.
   if (!translator) {
     translator = await Translator.create({
       sourceLanguage: 'en',
@@ -688,118 +696,85 @@ async function getGoogleDocStructure(docId) {
   return googleJson(url, { method: 'GET' });
 }
 
-function firstDocumentTab(documentResource) {
-  const queue = [...(documentResource?.tabs || [])];
-  while (queue.length) {
-    const tab = queue.shift();
-    if (tab?.documentTab && tab?.tabProperties?.tabId) return tab;
-    if (Array.isArray(tab?.childTabs)) queue.unshift(...tab.childTabs);
-  }
-  return null;
+function documentTabs(documentResource) {
+  const result = [];
+  const visit = tab => {
+    if (tab?.documentTab && tab?.tabProperties?.tabId) result.push(tab);
+    for (const child of tab?.childTabs || []) visit(child);
+  };
+  for (const tab of documentResource?.tabs || []) visit(tab);
+  return result;
 }
 
-async function addTranslationWarningToGoogleDoc(docId, documentResource, warningText) {
+function createRevisionWriter(docId, initialRevisionId) {
+  if (!initialRevisionId) throw new Error('Google Docs did not return a revision. No text was changed.');
+  let revisionId = initialRevisionId;
+  let stopped = false;
+  return {
+    get revisionId() { return revisionId; },
+    async write(requests) {
+      if (stopped) throw new Error('Document updates have stopped. Start a new translation.');
+      try {
+        const result = await googleJson(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(docId)}:batchUpdate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requests, writeControl: { requiredRevisionId: revisionId } })
+        });
+        const nextRevision = result?.writeControl?.requiredRevisionId;
+        if (!nextRevision) throw new Error('Google Docs did not confirm the new revision. Updates stopped to protect the document.');
+        revisionId = nextRevision;
+        return result;
+      } catch (error) {
+        // Never retry index-changing writes or adopt a fresh revision for stale ranges.
+        stopped = true;
+        if (/revision/i.test(error?.message || '') && /400|match|latest|conflict/i.test(error.message)) {
+          throw new Error('The copied document changed during translation. Updates stopped to avoid overwriting edits. Start a new translation from the source.');
+        }
+        throw error;
+      }
+    }
+  };
+}
+
+async function addTranslationWarningToGoogleDoc(documentResource, warningText, writer) {
   const message = normalizeWarningText(warningText);
   if (!message) throw new Error('Enter a translation warning before creating the Spanish Google Doc.');
-
-  const tab = firstDocumentTab(documentResource);
-  const tabId = tab?.tabProperties?.tabId;
-  const documentTab = tab?.documentTab;
-  if (!tabId || !documentTab) {
-    throw new Error('Google Docs did not return a writable document tab for the translation warning.');
+  const tabs = documentTabs(documentResource);
+  if (!tabs.length) throw new Error('Google Docs did not return a writable document tab for the translation warning.');
+  // The snapshot must be the revision reached by our last text replacement.
+  if (documentResource.revisionId !== writer.revisionId) {
+    throw new Error('The copied document changed before the warning could be added. Start a new translation from the source.');
   }
-
-  const docStyle = documentTab.documentStyle || {};
-  const documentMode = docStyle?.documentFormat?.documentMode || '';
-
-  // Pageless Docs do not render page headers. Put the notice at the top of
-  // the document instead so the warning remains visible to readers.
-  if (documentMode === 'PAGELESS') {
-    const insertIndex = 1;
-    await googleJson(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(docId)}:batchUpdate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [
-          {
-            insertText: {
-              location: { index: insertIndex, tabId },
-              text: `${message}\n\n`
-            }
-          },
-          {
-            updateTextStyle: {
-              range: { startIndex: insertIndex, endIndex: insertIndex + message.length, tabId },
-              textStyle: { bold: true },
-              fields: 'bold'
-            }
-          }
-        ]
-      })
-    });
-    return { placement: 'body', reason: 'pageless' };
+  const placements = [];
+  for (const tab of tabs) {
+    const tabId = tab.tabProperties.tabId;
+    const documentTab = tab.documentTab;
+    const docStyle = documentTab.documentStyle || {};
+    if (docStyle.documentFormat?.documentMode === 'PAGELESS') {
+      await writer.write([
+        { insertText: { location: { index: 1, tabId }, text: `${message}\n\n` } },
+        { updateTextStyle: { range: { startIndex: 1, endIndex: 1 + message.length, tabId }, textStyle: { bold: true }, fields: 'bold' } }
+      ]);
+      placements.push({ tabId, placement: 'body' });
+      continue;
+    }
+    let defaultHeaderId = docStyle.defaultHeaderId;
+    if (!defaultHeaderId) {
+      const created = await writer.write([
+        { createHeader: { type: 'DEFAULT', sectionBreakLocation: { index: 0, tabId } } }
+      ]);
+      defaultHeaderId = created?.replies?.[0]?.createHeader?.headerId;
+      if (!defaultHeaderId) throw new Error('Google Docs did not return the newly created header ID.');
+    }
+    const headerIds = [...new Set([...Object.keys(documentTab.headers || {}), defaultHeaderId])];
+    const requests = headerIds.flatMap(segmentId => [
+      { insertText: { location: { segmentId, index: 0, tabId }, text: `${message}\n` } },
+      { updateTextStyle: { range: { segmentId, startIndex: 0, endIndex: message.length, tabId }, textStyle: { bold: true }, fields: 'bold' } }
+    ]);
+    await writer.write(requests);
+    placements.push({ tabId, placement: 'header' });
   }
-
-  const existingHeaderIds = Object.keys(documentTab.headers || {});
-  let defaultHeaderId = docStyle.defaultHeaderId || '';
-
-  // A document can have separate first-page/even-page/section headers. Add the
-  // warning to all existing header segments, and ensure a DEFAULT header exists
-  // so normal pages also display the notice.
-  if (!defaultHeaderId) {
-    const created = await googleJson(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(docId)}:batchUpdate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        requests: [
-          {
-            createHeader: {
-              type: 'DEFAULT',
-              sectionBreakLocation: { index: 0, tabId }
-            }
-          }
-        ]
-      })
-    });
-    defaultHeaderId = created?.replies?.[0]?.createHeader?.headerId || '';
-  }
-
-  const headerIds = [...new Set([...existingHeaderIds, defaultHeaderId].filter(Boolean))];
-  if (!headerIds.length) {
-    throw new Error('Google Docs did not return a header ID for the translation warning.');
-  }
-
-  const requests = [];
-  for (const headerId of headerIds) {
-    requests.push(
-      {
-        insertText: {
-          location: { segmentId: headerId, index: 0, tabId },
-          text: `${message}\n`
-        }
-      },
-      {
-        updateTextStyle: {
-          range: {
-            segmentId: headerId,
-            startIndex: 0,
-            endIndex: message.length,
-            tabId
-          },
-          textStyle: { bold: true },
-          fields: 'bold'
-        }
-      }
-    );
-  }
-
-  await googleJson(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(docId)}:batchUpdate`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ requests })
-  });
-
-  return { placement: 'header', headerIds };
+  return placements;
 }
 
 function filterTextStyle(style = {}) {
@@ -1010,7 +985,7 @@ function buildReplacementRequests(op) {
   return requests;
 }
 
-async function applyTranslationsToGoogleDoc(docId, operations) {
+async function applyTranslationsToGoogleDoc(operations, writer) {
   const sorted = sortOperationsForReplacement(operations);
   const totalBatches = Math.ceil(sorted.length / API_REPLACEMENTS_PER_BATCH);
 
@@ -1022,16 +997,12 @@ async function applyTranslationsToGoogleDoc(docId, operations) {
     setProgress(pct, `Writing Spanish text to Google Doc ${batchIndex + 1} of ${totalBatches}…`);
     setStatus(`Updating formatted copy ${batchIndex + 1} / ${totalBatches}…`, 'warning');
 
-    await googleJson(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(docId)}:batchUpdate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requests })
-    });
+    await writer.write(requests);
   }
 }
 
 async function createSpanishGoogleDoc() {
-  if (creatingDoc || translating || !sourceDocId) return;
+  if (creatingDoc || translating || loadingDocument || !sourceDocId) return;
   if (!oauthClientConfigured()) {
     refreshOAuthUi();
     setStatus('Complete the Google OAuth setup shown below first.', 'error');
@@ -1047,12 +1018,15 @@ async function createSpanishGoogleDoc() {
   createDocButton.disabled = true;
   copyButton.disabled = true;
   saveButton.disabled = true;
-  setStatus('Connecting to Google Drive…', 'warning');
-  setProgress(2, 'Requesting Google authorization…');
+  setStatus('Preparing translation…', 'warning');
+  setProgress(1, 'Preparing the English → Spanish translator…');
 
   let createdDoc = null;
 
   try {
+    const activeTranslator = await getTranslator();
+    setStatus('Connecting to Google Drive…', 'warning');
+    setProgress(2, 'Requesting Google authorization…');
     await getGoogleAccessToken(true);
 
     setProgress(5, 'Checking the source file type…');
@@ -1071,6 +1045,7 @@ async function createSpanishGoogleDoc() {
       : 'Reading the copied document structure…');
     setStatus('Reading formatting and document structure…', 'warning');
     const structuredDoc = await getGoogleDocStructure(createdDoc.id);
+    const writer = createRevisionWriter(createdDoc.id, structuredDoc.revisionId);
     const operations = collectTranslationOperations(structuredDoc);
 
     if (!operations.length) {
@@ -1078,8 +1053,6 @@ async function createSpanishGoogleDoc() {
     }
 
     setProgress(14, `Found ${operations.length.toLocaleString()} formatted text sections.`);
-    const activeTranslator = await getTranslator();
-
     // Translate the warning explicitly with the same Translator instance used
     // for the document, but do not insert it yet. Newly created header segments
     // are not always returned consistently enough to depend on them being picked
@@ -1094,22 +1067,18 @@ async function createSpanishGoogleDoc() {
 
     const translatedOps = await translateOperations(operations, activeTranslator);
 
-    await applyTranslationsToGoogleDoc(createdDoc.id, translatedOps);
+    await applyTranslationsToGoogleDoc(translatedOps, writer);
 
     setProgress(99, 'Adding the translated warning…');
     setStatus('Adding the Spanish warning to the translated copy…', 'warning');
     const postTranslationDoc = await getGoogleDocStructure(createdDoc.id);
-    const warningResult = await addTranslationWarningToGoogleDoc(
-      createdDoc.id,
-      postTranslationDoc,
-      translatedWarning
+    const placements = await addTranslationWarningToGoogleDoc(
+      postTranslationDoc, translatedWarning, writer
     );
 
-    if (warningResult.placement === 'body') {
-      createdDocMeta.textContent += ' • Pageless document: translated warning placed at the top because headers are not displayed.';
-    } else {
-      createdDocMeta.textContent += ' • Translated warning added to header.';
-    }
+    const bodyCount = placements.filter(item => item.placement === 'body').length;
+    createdDocMeta.textContent += ` • Translated warning added to all ${placements.length} document tabs.`;
+    if (bodyCount) createdDocMeta.textContent += ` Placed at the top of ${bodyCount} pageless tabs.`;
 
     setProgress(100, 'Spanish Google Doc created.');
     setStatus('Formatted Spanish Google Doc created successfully.');
