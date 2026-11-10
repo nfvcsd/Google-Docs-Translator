@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Add a **Translate document headers** option, enabled by default. When it is cleared, header text stays in the source language. The translated warning is still added, and footers and footnotes are still translated.
+
 ## 1.1.4
 
 - Prepare on-device translation before requesting OAuth or copying a Drive file.

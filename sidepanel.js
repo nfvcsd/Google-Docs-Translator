@@ -20,6 +20,7 @@ const createdDocMeta = document.getElementById('createdDocMeta');
 const warningTextInput = document.getElementById('warningTextInput');
 const resetWarningButton = document.getElementById('resetWarningButton');
 const warningSavedText = document.getElementById('warningSavedText');
+const translateHeadersInput = document.getElementById('translateHeadersInput');
 
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 const OAUTH_PLACEHOLDER_PREFIX = 'REPLACE_WITH_';
@@ -27,6 +28,7 @@ const TRANSLATION_CHUNK_LIMIT = 2800;
 const API_REPLACEMENTS_PER_BATCH = 45;
 const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document';
 const WARNING_STORAGE_KEY = 'gdocsSpanishTranslationWarning';
+const TRANSLATE_HEADERS_STORAGE_KEY = 'gdocsSpanishTranslateHeaders';
 const DEFAULT_TRANSLATION_WARNING = 'Translation Notice: This document was automatically translated from English to Spanish and may contain errors. Please verify important information against the original English document.';
 
 let sourceText = '';
@@ -277,6 +279,17 @@ function resetWarningSetting() {
   localStorage.removeItem(WARNING_STORAGE_KEY);
   warningTextInput.value = DEFAULT_TRANSLATION_WARNING;
   warningSavedText.textContent = 'Using the default warning.';
+}
+
+// Header translation defaults to enabled. Only an explicit opt-out is stored,
+// so a missing or unreadable value always means "translate headers".
+function loadTranslateHeadersSetting() {
+  translateHeadersInput.checked = localStorage.getItem(TRANSLATE_HEADERS_STORAGE_KEY) !== 'false';
+}
+
+function saveTranslateHeadersSetting() {
+  if (translateHeadersInput.checked) localStorage.removeItem(TRANSLATE_HEADERS_STORAGE_KEY);
+  else localStorage.setItem(TRANSLATE_HEADERS_STORAGE_KEY, 'false');
 }
 
 function getConfiguredWarningText() {
@@ -885,15 +898,17 @@ function collectStructuralOperations(content, tabId, segmentId, operations) {
   }
 }
 
-function collectFromDocumentTab(tab, operations) {
+function collectFromDocumentTab(tab, operations, options) {
   const tabId = tab?.tabProperties?.tabId;
   const documentTab = tab?.documentTab;
   if (!tabId || !documentTab) return;
 
   collectStructuralOperations(documentTab.body?.content || [], tabId, '', operations);
 
-  for (const [headerId, header] of Object.entries(documentTab.headers || {})) {
-    collectStructuralOperations(header?.content || [], tabId, headerId, operations);
+  if (options.translateHeaders) {
+    for (const [headerId, header] of Object.entries(documentTab.headers || {})) {
+      collectStructuralOperations(header?.content || [], tabId, headerId, operations);
+    }
   }
   for (const [footerId, footer] of Object.entries(documentTab.footers || {})) {
     collectStructuralOperations(footer?.content || [], tabId, footerId, operations);
@@ -903,14 +918,14 @@ function collectFromDocumentTab(tab, operations) {
   }
 
   for (const child of tab.childTabs || []) {
-    collectFromDocumentTab(child, operations);
+    collectFromDocumentTab(child, operations, options);
   }
 }
 
-function collectTranslationOperations(documentResource) {
+function collectTranslationOperations(documentResource, { translateHeaders = true } = {}) {
   const operations = [];
   for (const tab of documentResource.tabs || []) {
-    collectFromDocumentTab(tab, operations);
+    collectFromDocumentTab(tab, operations, { translateHeaders });
   }
   return operations;
 }
@@ -1010,6 +1025,9 @@ async function createSpanishGoogleDoc() {
   }
 
   creatingDoc = true;
+  // Read the option once so a mid-run change cannot alter this copy.
+  const translateHeaders = translateHeadersInput.checked;
+  translateHeadersInput.disabled = true;
   createdDocUrl = '';
   createdDocMeta.textContent = '';
   openDocButton.classList.add('hidden');
@@ -1046,7 +1064,7 @@ async function createSpanishGoogleDoc() {
     setStatus('Reading formatting and document structure…', 'warning');
     const structuredDoc = await getGoogleDocStructure(createdDoc.id);
     const writer = createRevisionWriter(createdDoc.id, structuredDoc.revisionId);
-    const operations = collectTranslationOperations(structuredDoc);
+    const operations = collectTranslationOperations(structuredDoc, { translateHeaders });
 
     if (!operations.length) {
       throw new Error('The copied Google Doc did not contain any text runs that could be translated.');
@@ -1096,6 +1114,7 @@ async function createSpanishGoogleDoc() {
     if (createdDocUrl) openDocButton.classList.remove('hidden');
   } finally {
     creatingDoc = false;
+    translateHeadersInput.disabled = false;
     reloadButton.disabled = false;
     translateButton.disabled = !sourceText.trim();
     copyButton.disabled = !translationOutput.value;
@@ -1119,7 +1138,9 @@ openDocButton.addEventListener('click', openCreatedDoc);
 warningTextInput.addEventListener('change', saveWarningSetting);
 warningTextInput.addEventListener('blur', saveWarningSetting);
 resetWarningButton.addEventListener('click', resetWarningSetting);
+translateHeadersInput.addEventListener('change', saveTranslateHeadersSetting);
 
 loadWarningSetting();
+loadTranslateHeadersSetting();
 refreshOAuthUi();
 loadDocument();
