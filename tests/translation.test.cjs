@@ -212,3 +212,77 @@ test('complete formatted workflow writes only the copy and adds notices after tr
   assert.match(h.element('statusText').textContent, /created successfully/);
   assert.match(h.element('createdDocMeta').textContent, /all 2 document tabs/);
 });
+
+function headerDoc() {
+  const tab = docTab('t');
+  const run = (start, content) => ({ paragraph: { elements: [
+    { startIndex: start, endIndex: start + content.length, textRun: { content, textStyle: {} } }
+  ] } });
+  tab.documentTab.body = { content: [run(1, 'Body text\n')] };
+  tab.documentTab.headers = { h1: { content: [run(0, 'School header\n')] } };
+  tab.documentTab.footers = { f1: { content: [run(0, 'Footer text\n')] } };
+  tab.documentTab.footnotes = { n1: { content: [run(0, 'Footnote text\n')] } };
+  tab.childTabs = [{ ...docTab('child'), documentTab: { ...docTab('child').documentTab,
+    headers: { h2: { content: [run(0, 'Child header\n')] } } } }];
+  return { revisionId: 'r0', tabs: [tab] };
+}
+
+test('header text is collected by default and skipped only when disabled', () => {
+  const h = harness();
+  h.context.doc = headerDoc();
+  const segments = code => Array.from(h.run(code), op => `${op.tabId}:${op.segmentId}:${op.text}`);
+  assert.deepEqual(segments('collectTranslationOperations(doc)'), [
+    't::Body text', 't:h1:School header', 't:f1:Footer text', 't:n1:Footnote text', 'child:h2:Child header'
+  ]);
+  assert.deepEqual(segments('collectTranslationOperations(doc, { translateHeaders: false })'), [
+    't::Body text', 't:f1:Footer text', 't:n1:Footnote text'
+  ]);
+});
+
+test('header option defaults on and stores only an explicit opt-out', () => {
+  const h = harness();
+  const store = new Map();
+  h.context.localStorage = {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value)),
+    removeItem: key => store.delete(key)
+  };
+  const box = h.element('translateHeadersInput');
+  h.run('loadTranslateHeadersSetting()');
+  assert.equal(box.checked, true);
+  box.checked = false;
+  h.run('saveTranslateHeadersSetting()');
+  assert.equal(store.get('gdocsSpanishTranslateHeaders'), 'false');
+  box.checked = true;
+  h.run('loadTranslateHeadersSetting()');
+  assert.equal(box.checked, false, 'opt-out persists across panel loads');
+  box.checked = true;
+  h.run('saveTranslateHeadersSetting()');
+  assert.equal(store.has('gdocsSpanishTranslateHeaders'), false);
+});
+
+test('formatted workflow leaves headers untranslated when the option is cleared', async () => {
+  const h = harness();
+  const doc = headerDoc();
+  doc.tabs[0].childTabs = [];
+  doc.tabs[0].documentTab.documentStyle.defaultHeaderId = 'h1';
+  let revision = 0;
+  const inserted = [];
+  h.context.Translator = { create: async () => ({ translate: async text => `ES:${text}` }) };
+  h.context.getGoogleAccessToken = async () => 'token';
+  h.context.createEditableGoogleDocCopy = async () => ({ document: { id: 'copy', name: 'Lesson - Spanish' } });
+  h.context.getGoogleDocStructure = async () => ({ ...doc, revisionId: `r${revision}` });
+  h.context.googleJson = async (url, options) => {
+    const body = JSON.parse(options.body);
+    revision++;
+    for (const r of body.requests) if (r.insertText) inserted.push([r.insertText.location.segmentId || '', r.insertText.text]);
+    return { writeControl: { requiredRevisionId: `r${revision}` } };
+  };
+  h.run("sourceDocId = 'original'; sourceTitle = 'Lesson'; warningTextInput.value = 'Notice'; translateHeadersInput.checked = false;");
+  await h.run('createSpanishGoogleDoc()');
+  assert.match(h.element('statusText').textContent, /created successfully/);
+  assert.deepEqual(inserted, [
+    ['', 'ES:Body text'], ['f1', 'ES:Footer text'], ['n1', 'ES:Footnote text'], ['h1', 'ES:Notice\n']
+  ]);
+  assert.equal(h.element('translateHeadersInput').disabled, false, 're-enabled after the run');
+});

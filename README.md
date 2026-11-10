@@ -12,6 +12,7 @@ The original document is left unchanged.
 - **Text preview:** Read the translation in a side panel, copy it, or save it as a `.txt` file.
 - **Formatted copies:** Create a Spanish Google Doc while retaining tables, images, lists, headings, and supported text styles.
 - **Word document support:** Convert supported Office files opened in Google Docs into native Google Docs before translating them.
+- **Header control:** Choose whether document header text is translated. This is on by default. Turn it off to keep headers such as school names or logos in English.
 - **Translation notices:** Customize an English notice that is translated and added to every document tab, including nested tabs. Pageless tabs receive the notice at the top of the body.
 - **Concurrent-edit protection:** Stop updates if the copied document changes during translation, rather than applying outdated text ranges.
 
@@ -62,10 +63,11 @@ The preview does not require the extension’s Google OAuth authorization. It us
 ### Create a formatted Spanish copy
 
 1. Open the source document and the extension’s side panel.
-2. Review or customize the **Translation warning**.
-3. Select **Create Spanish Google Doc** and complete Google authorization when prompted.
-4. Keep the side panel open while translation runs, and avoid editing the new copy until it finishes.
-5. Select **Open created Spanish Doc** to review the result.
+2. Leave **Translate document headers** checked to translate header text, or clear it to keep headers in English. The choice is remembered in this browser.
+3. Review or customize the **Translation warning**.
+4. Select **Create Spanish Google Doc** and complete Google authorization when prompted.
+5. Keep the side panel open while translation runs, and avoid editing the new copy until it finishes.
+6. Select **Open created Spanish Doc** to review the result.
 
 The copy is named `Original document name - Spanish`. Supported Word files are converted to native Google Docs as part of this process. Review the translation before sharing it, especially where wording or formatting is important.
 
@@ -75,7 +77,7 @@ Translation is performed locally using Chrome’s Translator API. The extension 
 
 Creating a formatted copy communicates with Google Drive and Google Docs APIs using the Google account you authorize. This workflow requests the `https://www.googleapis.com/auth/drive` scope, which grants broad access to view, edit, create, and delete Drive files. The implemented workflow reads the source, creates a copy, and edits that copy; it does not modify the original or automatically delete files.
 
-Your custom translation notice is stored locally in the browser profile. OAuth client IDs and public extension keys included in the repository are public configuration, not secrets. Private signing keys must remain outside the repository.
+Your custom translation notice and header preference are stored locally in the browser profile. OAuth client IDs and public extension keys included in the repository are public configuration, not secrets. Private signing keys must remain outside the repository.
 
 ## Limitations
 
