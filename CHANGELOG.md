@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.2.0
 
 - Add a **Translate document headers** option, enabled by default. When it is cleared, header text stays in the source language. The translated warning is still added, and footers and footnotes are still translated.
 
